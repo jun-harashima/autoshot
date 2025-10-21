@@ -1,42 +1,71 @@
 // 指定 URL のページをキャプチャしてダウンロードする関数
-// url: ページ URL
-// filename: 保存するファイル名
-// viewport: ビューポートサイズや解像度の指定
-async function capturePage(url, filename, viewport = {width: 1440, height: 900, deviceScaleFactor: 1}) {
-  // 新しいタブを開く（active: true にしてアクティブ化）
-  const tab = await chrome.tabs.create({ url, active: true });
+async function capturePage(tab, filename) {
+  // タブをアクティブ化
+  await chrome.tabs.update(tab.id, { active: true });
 
-  // ページが読み込まれるまで 3 秒待つ（必要に応じて調整可能）
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  // 対象ウィンドウにフォーカス
+  await chrome.windows.update(tab.windowId, { focused: true });
 
-  // タブの表示内容を PNG 形式でキャプチャ
+  // 描画が安定するまで待機
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // スクリーンショットを取得
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
 
-  // ダウンロード処理
+  // ダウンロード
   await chrome.downloads.download({
-    url: dataUrl,       // ページ全体
-    filename: filename, // CSV で指定されたファイル名
-    saveAs: false,      // 自動保存
+    url: dataUrl,
+    filename: filename,
+    saveAs: false,
   });
 
-  // 開いたタブを閉じる
+  // タブを閉じる
   await chrome.tabs.remove(tab.id);
+}
+
+// ページをロードするまで待機（バックグラウンドタブでも OK）
+async function waitForPageLoad(tabId) {
+  return new Promise(resolve => {
+    const listener = (updatedTabId, info) => {
+      if (updatedTabId === tabId && info.status === "complete") {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+  });
 }
 
 // バックグラウンドでメッセージを受信
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "start_screenshot") {
     (async () => {
-      // CSV の各行についてスクリーンショットを順番に取得
+      const device = message.device;
+      const viewport =
+        device === "mobile"
+          ? { width: 375, height: 812, deviceScaleFactor: 3 }
+          : { width: 1440, height: 900, deviceScaleFactor: 1.5 };
+
+      // 全ての URL をバックグラウンドで開く
+      const tabs = [];
       for (const row of message.csvRows) {
-        // デバイスによってビューポートを切り替え
-        const viewport = message.device === "mobile"
-          ? { width: 375, height: 812, deviceScaleFactor: 3 }  // スマホ
-          : { width: 1440, height: 900, deviceScaleFactor: 1.5 }; // デスクトップ
-        await capturePage(row.url, row.filename, viewport);
+        const tab = await chrome.tabs.create({ url: row.url, active: false });
+        tabs.push({ tab, filename: row.filename });
       }
-      sendResponse({ status: "done" }); // 完了レスポンス
+
+      // 全てのページを読み込むまで待機
+      await Promise.all(tabs.map(t => waitForPageLoad(t.tab.id)));
+
+      // 順番にアクティブ化し、スクリーンショットを取得
+      for (const t of tabs) {
+        console.log(`Capturing: ${t.filename}`);
+        await capturePage(t.tab, t.filename);
+        await new Promise(r => setTimeout(r, 500)); // 少し間を空ける
+      }
+
+      sendResponse({ status: "done" });
     })();
-    return true; // 非同期レスポンスを有効化
+
+    return true; // 非同期レスポンスを許可
   }
 });
