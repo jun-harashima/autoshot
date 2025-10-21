@@ -1,6 +1,5 @@
 // DOM が完全に読み込まれたら処理を開始
 document.addEventListener('DOMContentLoaded', () => {
-    // ボタンや入力要素を取得
     const startBtn = document.getElementById('startBtn');    // 「開始」ボタン
     const csvFileInput = document.getElementById('csvFile'); // CSV ファイル入力
     const deviceSelect = document.getElementById('device');  // デバイス選択 (desktop/mobile)
@@ -15,10 +14,10 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onload = () => {
             // 改行で分割して空行は除去
             const lines = reader.result.split('\n').filter(l => l.trim() !== '');
-            // CSV の各行を {url, filename, selector} オブジェクトに変換
+            // CSV の各行を {url, filename} オブジェクトに変換
             const csvRows = lines.map(line => {
-                const [url, filename, selector] = line.split(',');
-                return {url, filename, selector};
+                const [url, filename] = line.split(',');
+                return {url, filename};
             });
 
             const device = deviceSelect.value; // 選択されたデバイス情報
