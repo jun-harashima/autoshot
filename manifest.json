@@ -6,7 +6,8 @@
     "downloads",
     "tabs",
     "scripting",
-    "activeTab"
+    "activeTab",
+    "debugger"
   ],
   "action": {
     "default_popup": "popup.html"
