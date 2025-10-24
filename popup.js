@@ -1,36 +1,47 @@
-// DOM が完全に読み込まれたら処理を開始
 document.addEventListener('DOMContentLoaded', () => {
-    const startBtn = document.getElementById('startBtn');    // 「開始」ボタン
-    const csvFileInput = document.getElementById('csvFile'); // CSV ファイル入力
-    const deviceSelect = document.getElementById('device');  // デバイス選択 (desktop/mobile)
+  const startBtn = document.getElementById('startBtn');
+  const csvFileInput = document.getElementById('csvFile');
+  const deviceSelect = document.getElementById('device');
+  const widthInput = document.getElementById('width');
+  const heightInput = document.getElementById('height');
 
-    // 開始ボタンクリック時の処理
-    startBtn.addEventListener('click', () => {
-        const file = csvFileInput.files[0];
-        if (!file) return alert("CSV を選択してください");
+  const defaults = {
+    desktop: { width: 1280, height: 720 },
+    mobile: { width: 390, height: 844 },
+  };
 
-        const reader = new FileReader();
-        // ファイル読み込み完了時の処理
-        reader.onload = () => {
-            // 改行で分割して空行は除去
-            const lines = reader.result.split('\n').filter(l => l.trim() !== '');
-            // CSV の各行を {url, filename} オブジェクトに変換
-            const csvRows = lines.map(line => {
-                const [url, filename] = line.split(',');
-                return {url, filename};
-            });
+  // 初期値をセット
+  const setDefaults = () => {
+    const d = deviceSelect.value;
+    widthInput.value = defaults[d].width;
+    heightInput.value = defaults[d].height;
+  };
 
-            const device = deviceSelect.value; // 選択されたデバイス情報
+  setDefaults(); // ページ読み込み時に初期設定
 
-            // バックグラウンドスクリプトにメッセージを送信
-            chrome.runtime.sendMessage(
-                {type: 'start_screenshot', csvRows, device},
-                (resp) => {
-                    alert('スクリーンショット完了'); // ユーザーに通知
-                }
-            );
-        };
-        // CSV ファイルをテキストとして読み込む
-        reader.readAsText(file);
-    });
+  deviceSelect.addEventListener('change', setDefaults);
+
+  startBtn.addEventListener('click', () => {
+    const file = csvFileInput.files[0];
+    if (!file) return alert('CSV を選択してください');
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const lines = reader.result.split('\n').filter(l => l.trim() !== '');
+      const csvRows = lines.map(line => {
+        const [url, filename] = line.split(',');
+        return { url, filename };
+      });
+
+      const device = deviceSelect.value;
+      const width = Number(widthInput.value);
+      const height = Number(heightInput.value);
+
+      chrome.runtime.sendMessage(
+        { type: 'start_screenshot', csvRows, device, width, height },
+        () => alert('スクリーンショット完了')
+      );
+    };
+    reader.readAsText(file);
+  });
 });

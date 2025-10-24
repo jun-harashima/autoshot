@@ -1,22 +1,24 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="UTF-8">
-  <title>スクリーンショット</title>
-</head>
-<body>
-  <h3>スクリーンショットを撮る</h3>
-  <input type="file" id="csvFile" accept=".csv">
-  <br>
-  <label>デバイス:
-    <select id="device">
-      <option value="desktop">デスクトップ</option>
-      <option value="mobile">スマートフォン</option>
-    </select>
-  </label>
-  <br>
-  <button id="startBtn">開始</button>
-
-  <script src="popup.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8">
+    <title>スクリーンショット</title>
+  </head>
+  <body>
+    <h3>スクリーンショットを撮る</h3>
+    <input type="file" id="csvFile" accept=".csv">
+    <br>
+    <label>デバイス:
+      <select id="device">
+	<option value="desktop">デスクトップ</option>
+	<option value="mobile">スマートフォン</option>
+      </select>
+    </label>
+    <br>
+    <label>幅: <input type="number" id="width" style="width:80px;"></label>
+    <label>高さ: <input type="number" id="height" style="width:80px;"></label>
+    <br><br>
+    <button id="startBtn">開始</button>
+    <script src="popup.js"></script>
+  </body>
 </html>
