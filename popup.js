@@ -1,47 +1,87 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const startBtn = document.getElementById('startBtn');
   const csvFileInput = document.getElementById('csvFile');
   const deviceSelect = document.getElementById('device');
   const widthInput = document.getElementById('width');
   const heightInput = document.getElementById('height');
+  const startBtn = document.getElementById('startBtn');
 
-  const defaults = {
+  const DEFAULT_SIZES = {
     desktop: { width: 1280, height: 720 },
     mobile: { width: 390, height: 844 },
   };
 
-  // 初期値をセット
-  const setDefaults = () => {
-    const d = deviceSelect.value;
-    widthInput.value = defaults[d].width;
-    heightInput.value = defaults[d].height;
-  };
+  /**
+   * デバイスに応じた初期サイズを設定
+   */
+  function applyDefaultSize() {
+    const selected = deviceSelect.value;
+    const { width, height } = DEFAULT_SIZES[selected];
+    widthInput.value = width;
+    heightInput.value = height;
+  }
 
-  setDefaults(); // ページ読み込み時に初期設定
+  /**
+   * CSV をオブジェクト配列に変換
+   * @param {string} text CSV テキスト
+   * @returns {Array<{url: string, filename: string}>}
+   */
+  function parseCSV(text) {
+    return text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line)
+      .map(line => {
+        const [url, filename] = line.split(',').map(v => v?.trim());
+        return { url, filename };
+      })
+      .filter(row => row.url && row.filename);
+  }
 
-  deviceSelect.addEventListener('change', setDefaults);
-
-  startBtn.addEventListener('click', () => {
+  /**
+   * スクリーンショットを取得
+   */
+  function captureScreenshot() {
     const file = csvFileInput.files[0];
-    if (!file) return alert('CSV を選択してください');
+    if (!file) {
+      alert('CSV を選択してください。');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = () => {
-      const lines = reader.result.split('\n').filter(l => l.trim() !== '');
-      const csvRows = lines.map(line => {
-        const [url, filename] = line.split(',');
-        return { url, filename };
+      const csvRows = parseCSV(reader.result);
+      if (csvRows.length === 0) {
+        alert('有効な行が見つかりませんでした。');
+        return;
+      }
+
+      const payload = {
+        type: 'start_screenshot',
+        csvRows,
+        device: deviceSelect.value,
+        width: Number(widthInput.value),
+        height: Number(heightInput.value),
+      };
+
+      chrome.runtime.sendMessage(payload, () => {
+        alert('スクリーンショット完了');
       });
-
-      const device = deviceSelect.value;
-      const width = Number(widthInput.value);
-      const height = Number(heightInput.value);
-
-      chrome.runtime.sendMessage(
-        { type: 'start_screenshot', csvRows, device, width, height },
-        () => alert('スクリーンショット完了')
-      );
     };
+
     reader.readAsText(file);
-  });
+  }
+
+  /**
+   * イベントをまとめて登録
+   */
+  function initEventListeners() {
+    // デバイスが変更されたら幅と高さを変更
+    deviceSelect.addEventListener('change', applyDefaultSize);
+
+    //「開始」がクリックされたらスクリーンショットを取得
+    startBtn.addEventListener('click', captureScreenshot);
+  }
+
+  applyDefaultSize();
+  initEventListeners();
 });
