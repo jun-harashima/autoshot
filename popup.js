@@ -1,14 +1,11 @@
+import { DEFAULT_SIZES } from './constant.js';
+
 document.addEventListener('DOMContentLoaded', () => {
   const csvFileInput = document.getElementById('csvFile');
   const deviceSelect = document.getElementById('device');
   const widthInput = document.getElementById('width');
   const heightInput = document.getElementById('height');
   const startBtn = document.getElementById('startBtn');
-
-  const DEFAULT_SIZES = {
-    desktop: { width: 1280, height: 720 },
-    mobile: { width: 390, height: 844 },
-  };
 
   /**
    * デバイスに応じた初期サイズを設定
@@ -55,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const payload = {
+      const message = {
         type: 'start_screenshot',
         csvRows,
         device: deviceSelect.value,
@@ -63,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         height: Number(heightInput.value),
       };
 
-      chrome.runtime.sendMessage(payload, () => {
+      chrome.runtime.sendMessage(message, () => {
         alert('スクリーンショット完了');
       });
     };
