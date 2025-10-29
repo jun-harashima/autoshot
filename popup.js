@@ -28,15 +28,15 @@ document.addEventListener('DOMContentLoaded', () => {
       .map(line => line.trim())
       .filter(line => line)
       .map(line => {
-        const [url, filename] = line.split(',').map(v => v?.trim());
-        return { url, filename };
+        const [url, filename, flag] = line.split(',').map(v => v?.trim());
+        return { url, filename, flag };
       })
       .filter(row => row.url && row.filename);
   }
 
   /**
    * スクリーンショットを取得
-   */
+  */
   function captureScreenshot() {
     const file = csvFileInput.files[0];
     if (!file) {

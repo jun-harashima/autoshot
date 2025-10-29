@@ -23,24 +23,57 @@ async function detachDebugger(tabId) {
 }
 
 /**
- * CDP（Chrome DevTools Protocol）を利用し、指定されたタブでページを開き、スクリーンショットを取得
+ * 手動操作モード: ユーザーがページを操作し、Shift+Enter で続行
  */
-async function captureCDP(tabId, url, filename, width, height, isMobile) {
+async function waitForUserAction(tabId) {
+  console.log('Manual mode: waiting for user action...');
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const notice = document.createElement('div');
+      notice.textContent = 'ページを操作してください。操作が終わったら Shift+Enter を押して撮影します。';
+      Object.assign(notice.style, {
+        position: 'fixed',
+        top: '10px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'rgba(0, 0, 0, 0.8)',
+        color: 'white',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        zIndex: 999999,
+        fontSize: '14px',
+        fontFamily: 'sans-serif',
+      });
+      document.body.appendChild(notice);
+
+      return new Promise(resolve => {
+        const handler = e => {
+          if (e.key === 'Enter' && e.shiftKey) {
+            window.removeEventListener('keydown', handler);
+            notice.remove();
+            resolve();
+          }
+        };
+        window.addEventListener('keydown', handler);
+      });
+    },
+  });
+}
+
+async function attachAndSetDevice(tabId, width, height, isMobile) {
   const debugTarget = { tabId };
 
-  // CDP を利用するため、デバッガを対象タブにアタッチ
   await chrome.debugger.attach(debugTarget, '1.3');
   console.log('Debugger attached:', tabId);
 
-  // デバイスメトリクスを設定
   await chrome.debugger.sendCommand(debugTarget, 'Emulation.setDeviceMetricsOverride', {
     width: parseInt(width, 10) || 1280,
     height: parseInt(height, 10) || 720,
     deviceScaleFactor: 3,
-    mobile: !!isMobile && isMobile !== "false", // 文字列 'false' も false に
+    mobile: !!isMobile && isMobile !== "false",
   });
 
-  // User-Agent（UA）を設定
   if (isMobile) {
     await chrome.debugger.sendCommand(debugTarget, 'Emulation.setUserAgentOverride', {
       userAgent:
@@ -48,36 +81,13 @@ async function captureCDP(tabId, url, filename, width, height, isMobile) {
         'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1'
     });
   }
+}
 
-  // ページに遷移（UA 適用済み）
-  await chrome.debugger.sendCommand(debugTarget, 'Page.navigate', { url });
-  await waitForPageLoad(tabId);
-
-  // lazy-load の対策
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: async () => {
-      // max-width 解除
-      document.body.style.maxWidth = '100%';
-
-      // lazy-load 画像を強制的にロード
-      document.querySelectorAll('img[loading="lazy"]').forEach(img => {
-        if (img.dataset.src) img.src = img.dataset.src;
-        img.loading = 'eager';
-      });
-
-      // ページ全体をスクロールし、lazy-load を確実に発火させる
-      window.scrollTo(0, document.body.scrollHeight);
-      await new Promise(r => setTimeout(r, 1000));
-      window.scrollTo(0, 0);
-      await new Promise(r => setTimeout(r, 500));
-    }
-  });
-
-  // 画像読み込み・再描画のために少し待機
-  await new Promise(r => setTimeout(r, 1500));
-
-  // スクリーンショットを取得
+/**
+ * CDP（Chrome DevTools Protocol）を利用し、指定されたタブでページを開き、スクリーンショットを取得
+ */
+async function takeScreenshot(tabId, filename) {
+  const debugTarget = { tabId };
   const result = await chrome.debugger.sendCommand(debugTarget, 'Page.captureScreenshot', {
     format: 'png',
     captureBeyondViewport: false,
@@ -85,12 +95,7 @@ async function captureCDP(tabId, url, filename, width, height, isMobile) {
   });
 
   const dataUrl = 'data:image/png;base64,' + result.data;
-
-  await chrome.downloads.download({
-    url: dataUrl,
-    filename,
-    saveAs: false,
-  });
+  await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
 
   await detachDebugger(tabId);
   await chrome.tabs.remove(tabId);
@@ -118,6 +123,9 @@ async function createWindowAndCapture(csvRows, device, width, height) {
   for (const row of csvRows) {
     console.log('Opening:', row.url);
 
+    // 3列目の flag を取得
+    const flag = row.flag;
+
     // 空のタブを作成
     const tab = await chrome.tabs.create({
       windowId: window.id,
@@ -125,11 +133,37 @@ async function createWindowAndCapture(csvRows, device, width, height) {
       active: true
     });
 
+    await attachAndSetDevice(tab.id, width, height, isMobile);
+    await chrome.tabs.update(tab.id, { url: row.url });
+    await waitForPageLoad(tab.id);
+
     // Chrome DevTools Protocol (CDP) で以下を実行
     // - 1. 指定の URL を開く
     // - 2. ユーザーエージェントやデバイス等の設定を適用
     // - 3. スクリーンショットを取得
-    await captureCDP(tab.id, row.url, row.filename, width, height, isMobile);
+    if (flag) {
+      // 手動操作モード
+      await waitForUserAction(tab.id);
+    } else {
+      // 通常モード
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        // lazy-load 対策
+        func: async () => {
+          document.body.style.maxWidth = '100%';
+          document.querySelectorAll('img[loading="lazy"]').forEach(img => {
+            if (img.dataset.src) img.src = img.dataset.src;
+            img.loading = 'eager';
+          });
+          window.scrollTo(0, document.body.scrollHeight);
+          await new Promise(r => setTimeout(r, 1000));
+          window.scrollTo(0, 0);
+          await new Promise(r => setTimeout(r, 500));
+        },
+      });
+    }
+
+    await takeScreenshot(tab.id, row.filename);
 
     // 次のタブを作成する前に少し待機（安定性のため）
     await new Promise(r => setTimeout(r, 500));
